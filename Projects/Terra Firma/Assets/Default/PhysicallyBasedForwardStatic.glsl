@@ -305,21 +305,25 @@ float fadeShadowScalar(vec2 shadowTexCoords, float shadowScalar)
 
 float computeShadowScalarPoint(vec4 position, vec3 lightOrigin, int shadowIndex)
 {
-    vec3 positionShadow = position.xyz - lightOrigin;
-    float shadowZ = length(positionShadow);
     float shadowHits = 0.0;
+    float shadowTexelSize = 1.0 / textureSize(shadowMaps[shadowIndex - SHADOW_TEXTURES_MAX], 0).x; // assume square
+    vec3 toFragment = position.xyz - lightOrigin;
+    float distance = length(toFragment);
+    vec3 direction = toFragment / distance; // normalized direction for samplerCube
+    vec3 up = abs(direction.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    vec3 tangent = normalize(cross(up, direction));
+    vec3 bitangent = normalize(cross(direction, tangent));
     for (int i = 0; i < lightShadowSamples; ++i)
     {
         for (int j = 0; j < lightShadowSamples; ++j)
         {
-            for (int k = 0; k < lightShadowSamples; ++k)
-            {
-                vec3 offset = (vec3(i, j, k) - vec3(lightShadowSamples / 2.0)) * (lightShadowSampleScalar / lightShadowSamples);
-                shadowHits += shadowZ - lightShadowBias > texture(shadowMaps[shadowIndex - SHADOW_TEXTURES_MAX], positionShadow + offset).x ? 1.0 : 0.0;
-            }
+            vec2 offset = (vec2(float(i), float(j)) - vec2(float(lightShadowSamples) * 0.5)) * shadowTexelSize;
+            vec3 directionSample = normalize(direction + tangent * offset.x + bitangent * offset.y);
+            float depthSample = texture(shadowMaps[shadowIndex - SHADOW_TEXTURES_MAX], directionSample).r;
+            shadowHits += (distance - lightShadowBias > depthSample) ? 1.0 : 0.0;
         }
     }
-    return 1.0 - shadowHits / (lightShadowSamples * lightShadowSamples * lightShadowSamples);
+    return 1.0 - shadowHits / (lightShadowSamples * lightShadowSamples);
 }
 
 float computeShadowScalarSpot(vec4 position, float lightConeOuter, int shadowIndex)
